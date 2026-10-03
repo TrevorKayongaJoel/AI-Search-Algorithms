@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Campus Route Finder Report</title>
+<style>
+  @page { size: A4; margin: 13mm 14mm 13mm 14mm; }
+  :root { --ink:#1b2430; --muted:#5a6573; --rule:#d5dbe2; --accent:#0f4c5c; --bfs:#1565c0; --dfs:#c62828; --land:#f0b032; --school:#0f4c5c; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 9.2pt; line-height: 1.38; color: var(--ink); background:#fff; margin:0; }
+  h1 { font-size: 15pt; margin: 0 0 2px; color: var(--accent); }
+  h2 { font-size: 11.2pt; margin: 11px 0 4px; color: var(--accent); border-bottom: 1px solid var(--rule); padding-bottom: 2px; }
+  h3 { font-size: 9.6pt; margin: 8px 0 2px; }
+  p { margin: 3px 0 5px; }
+  ul, ol { margin: 2px 0 5px; padding-left: 18px; }
+  li { margin: 1px 0; }
+  .meta { color: var(--muted); font-size: 9pt; margin-bottom: 6px; }
+  code, pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 8.3pt; }
+  pre { background:#f5f7f9; border:1px solid var(--rule); border-radius:4px; padding:6px 8px; margin:4px 0 6px; line-height:1.3; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; margin: 4px 0 6px; }
+  th, td { border: 1px solid var(--rule); padding: 2px 4px; vertical-align: top; text-align: left; }
+  th { background: #eef2f5; }
+  .formal td:first-child { width: 21%; font-weight: 600; }
+  .formal td:nth-child(3) { width: 16%; color: var(--muted); }
+  .results { font-size: 7.6pt; }
+  .results td.n { text-align: right; white-space: nowrap; }
+  .results tr.pair td { border-top: 1.6px solid #9aa6b2; }
+  .key { font-size: 7.6pt; color: var(--muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  figure { margin: 4px 0 6px; }
+  figcaption { font-size: 8pt; color: var(--muted); }
+  .tag-b { color: var(--bfs); font-weight: 600; }
+  .tag-d { color: var(--dfs); font-weight: 600; }
+  .avoid { break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<h1>Makerere Campus Route Finder: BFS and DFS</h1>
+<div class="meta">CSC 2114 Artificial Intelligence, Practical 1 &nbsp;|&nbsp; Name: ______________________ &nbsp;|&nbsp; Student No.: ______________ &nbsp;|&nbsp; Code: <code>route_finder.py</code> (Python 3, standard library only)</div>
+
+<h2>1. Problem formulation</h2>
+<p>Let <b>P</b> be the set of 18 places (14 schools, 4 landmarks) and <b>E</b> the set of 24 two-way connections. The state space is <b>S = P</b>: a state is simply the place where the visitor currently stands.</p>
+<table class="formal">
+<tr><th>Component</th><th>Definition</th><th>Type</th></tr>
+<tr><td>1. Initial state</td><td><i>s</i><sub>0</sub> &isin; S, the source school typed by the user, e.g. <i>s</i><sub>0</sub> = CoCIS.</td><td>One element of the set S</td></tr>
+<tr><td>2. Actions(<i>s</i>)</td><td>Actions(<i>s</i>) = { Go(<i>x</i>) : {<i>s</i>, <i>x</i>} &isin; E }. Read off the graph by taking every edge that contains <i>s</i> <i>in either position</i> (connections are two-way); the other end is a legal destination. The code builds this once as an adjacency list and sorts it alphabetically. Example: Actions(Main Library) = {Go(Freedom Square), Go(Main Building), Go(School of Economics), Go(School of Education)}.</td><td>Function S &rarr; set of actions</td></tr>
+<tr><td>3. Result(<i>s</i>, <i>a</i>)</td><td>Result(<i>s</i>, Go(<i>x</i>)) = <i>x</i>, defined only for Go(<i>x</i>) &isin; Actions(<i>s</i>). Walking to a neighbour puts the visitor at that neighbour; the model is deterministic.</td><td>Function S &times; A &rarr; S</td></tr>
+<tr><td>4. Goal test</td><td>IsGoal(<i>s</i>) = (<i>s</i> = <i>g</i>), where <i>g</i> is the destination school. There is exactly one goal state.</td><td>Boolean test on a state</td></tr>
+<tr><td>5. Path cost</td><td><i>g</i>(path) = &Sigma; c(<i>s</i>, <i>a</i>, <i>s&prime;</i>) with c = 1 for every step, so the path cost is the number of hops. The step cost is 1 because the model chooses to measure a route by the <i>number of walks between adjacent places</i> and deliberately ignores physical distance; every action is therefore equally expensive and the optimal route is the one with the fewest hops.</td><td>Function path &rarr; non-negative integer</td></tr>
+</table>
+
+<p><b>Abstraction.</b> The state ignores (1) the physical length and walking time of each connection, (2) terrain such as the slope up to Main Building, stairs and footpath quality, and (3) conditions such as rain, crowds, traffic on campus roads and the time of day. Dropping them is <i>valid</i> because every abstract step is a real walkable connection, so any abstract route can be expanded into a real walk the visitor can actually make. It is <i>useful</i> because it reduces a continuous, changing world to 18 states and 24 edges, which can be searched instantly and whose answer is a short, readable list of places.</p>
+<p><b>State versus node.</b> The state <i>Main Library</i> can appear in two different search-tree nodes: one reached by Main Building &rarr; Main Library (PARENT = Main Building, PATH-COST = 1) and one by Main Building &rarr; Freedom Square &rarr; Main Library (PARENT = Freedom Square, PATH-COST = 2). The STATE is the same, but PARENT, ACTION and PATH-COST differ. My program shows this happening: in DFS from CoCIS, the state CoCIS is the root node (cost 0) and appears again as a child of Central Teaching Facility (cost 2) (see the trace in &sect;4.2).</p>
+
+<h2>2. Design</h2>
+<ul>
+<li><b>Graph and problem.</b> <code>build_graph(EDGES)</code> adds each edge in both directions and stores every place's neighbours sorted alphabetically. <code>RouteProblem</code> holds the five components: <code>initial</code>, <code>actions(s)</code>, <code>result(s, a)</code>, <code>is_goal(s)</code> and <code>step_cost</code> (always 1).</li>
+<li><b>Node.</b> A class with the four lecture fields: <code>state</code>, <code>parent</code>, <code>action</code> and <code>path_cost</code>. <code>solution(node)</code> follows <code>parent</code> pointers to the root, collecting states, then reverses the list.</li>
+<li><b>reached.</b> A <code>dict</code> mapping state &rarr; node. A child is recorded when it is <i>generated</i>, and later children with a state already in <code>reached</code> are skipped. As in lecture step 1, <code>reached</code> starts empty, so the start state can be generated once more as a grandchild. This costs at most one extra expansion, and I kept it to follow the lecture exactly.</li>
+<li><b>Frontier: the only difference between BFS and DFS.</b> Two small classes share one interface, <code>add_all(nodes)</code> and <code>remove()</code>. <code>FIFOQueue</code> uses a <code>deque</code>, adding at the back and removing from the front. <code>LIFOStack</code> uses a <code>list</code>, adding at the back and removing from the back. Because a stack returns the <i>last</i> node pushed, <code>LIFOStack.add_all</code> pushes the children in <i>reverse</i> alphabetical order so that the alphabetically first child ends up on top and is explored first. <code>search()</code> chooses the class from <code>STRATEGIES[strategy]</code>. No other line depends on the algorithm.</li>
+<li><b>Switches.</b> <code>search(..., use_reached=False)</code> or the <code>--tree</code> command-line flag gives tree-like search. A cap of 10,000 expansions makes every run terminate.</li>
+</ul>
+<pre>function SEARCH(problem, strategy, use_reached):
+  frontier &larr; new FIFOQueue if strategy = BFS else new LIFOStack     # the only difference
+  frontier.add(NODE(problem.initial)); reached &larr; {}; expanded &larr; 0       # step 1
+  while frontier is not empty:                                          # steps 2 and 7
+      node &larr; frontier.remove()                                          # step 3
+      if problem.IS-GOAL(node.state): return SOLUTION(node), expanded   # step 4 (goal test on removal)
+      if expanded = 10,000: return CUTOFF
+      expanded &larr; expanded + 1                                            # step 5: expand
+      children &larr; []
+      for each action in problem.ACTIONS(node.state):   (alphabetical)
+          child &larr; NODE(RESULT(node.state, action), node, action, node.path_cost + 1)
+          if use_reached:                                               # step 6
+              if child.state in reached: continue
+              reached[child.state] &larr; child
+          children.append(child)
+      frontier.add_all(children)        # LIFOStack pushes in reverse so the first child is on top
+  return FAILURE                                                        # step 2</pre>
+<p>Input handling: the 14 schools are listed with numbers 1&ndash;14, and the user may type either the number or the name. Names are compared after <code>strip()</code> and <code>casefold()</code>; a number outside 1&ndash;14 is rejected with a message. An unknown place or a landmark entered as a school prints a clear message, lists the 14 valid schools and asks again. An unknown algorithm asks again. Source = destination prints a one-place route with cost 0 and 0 expansions. Failure prints <code>No route found.</code></p>
+
+<h3>B4. Graph search vs. tree-like search (DFS, CoCIS &rarr; School of Law)</h3>
+<table class="results" style="font-size:8pt">
+<tr><th>Mode</th><th>Outcome</th><th>Cost</th><th>Nodes expanded</th><th>Stack size at end</th></tr>
+<tr><td>With <code>reached</code> (graph search)</td><td>CoCIS &rarr; Central Teaching Facility &rarr; Freedom Square &rarr; School of Law</td><td class="n">3</td><td class="n">16</td><td class="n">&le; 9</td></tr>
+<tr><td>Without <code>reached</code> (<code>--tree</code>)</td><td>No route found. Stopped at the safety cap.</td><td class="n">&ndash;</td><td class="n">10,000</td><td class="n">20,001</td></tr>
+</table>
+<p><b>Why the cycles cause this.</b> CoCIS's alphabetically first neighbour is Central Teaching Facility (CTF), and CTF's first neighbour is CoCIS. Without <code>reached</code>, nothing stops DFS from regenerating CoCIS as a child of CTF, so it always takes the top branch: CoCIS &rarr; CTF &rarr; CoCIS &rarr; CTF &rarr; &hellip;. The search tree is infinite even though there are only 18 states, because every cycle can be walked around again. Each expansion also leaves two unexplored siblings below it on the stack (net +2 per expansion), so after 10,000 expansions the stack holds 20,001 nodes and Freedom Square, the way to Law, is never reached. <b>How <code>reached</code> prevents it:</b> each state is put on the frontier at most once (plus the start state at most once more), so DFS can expand at most about 19 nodes, cannot loop, and is complete on this finite graph. With the same flag, tree-like BFS still finds the 3-hop route (19 expansions) because it goes level by level, but its frontier grows to 41 nodes instead of at most 8.</p>
+
+<h2>3. Results (graph search, alphabetical neighbour order)</h2>
+<p class="key"><b>Key:</b> MB Main Building &middot; FS Freedom Square &middot; ML Main Library &middot; CTF Central Teaching Facility &middot; CoCIS &middot; ENG Engineering &middot; SBE Built Environment &middot; MT Margaret Trowell School of Industrial and Fine Art &middot; LAW Law &middot; EDU Education &middot; SSS Social Sciences &middot; LPA Liberal and Performing Arts &middot; ECON Economics &middot; SSP Statistics and Planning &middot; CoNAS College of Natural Sciences &middot; FOOD Food Technology, Nutrition and Bioengineering &middot; AGRIC Agricultural Sciences &middot; VET Veterinary Medicine. Full names are used by the program.</p>
+<table class="results">
+<tr><th>#</th><th>Source</th><th>Destination</th><th>Alg.</th><th>Route</th><th>Cost (hops)</th><th>Nodes expanded</th></tr>
+<tr class="pair"><td>1</td><td>ECON</td><td>LAW</td><td>BFS</td><td>ECON &rarr; LAW</td><td class="n">1</td><td class="n">2</td></tr>
+<tr><td>1</td><td>ECON</td><td>LAW</td><td>DFS</td><td>ECON &rarr; LAW</td><td class="n">1</td><td class="n">17</td></tr>
+<tr class="pair"><td>2</td><td>CoCIS</td><td>ENG</td><td>BFS</td><td>CoCIS &rarr; ENG</td><td class="n">1</td><td class="n">2</td></tr>
+<tr><td>2</td><td>CoCIS</td><td>ENG</td><td>DFS</td><td>CoCIS &rarr; ENG</td><td class="n">1</td><td class="n">17</td></tr>
+<tr class="pair"><td>3</td><td>LAW</td><td>SSS</td><td>BFS</td><td>LAW &rarr; FS &rarr; MB &rarr; SSS</td><td class="n">3</td><td class="n">10</td></tr>
+<tr><td>3</td><td>LAW</td><td>SSS</td><td>DFS</td><td>LAW &rarr; FS &rarr; MB &rarr; SSS</td><td class="n">3</td><td class="n">10</td></tr>
+<tr class="pair"><td>4</td><td>EDU</td><td>VET</td><td>BFS</td><td>EDU &rarr; CoNAS &rarr; FOOD &rarr; AGRIC &rarr; VET</td><td class="n">4</td><td class="n">14</td></tr>
+<tr><td>4</td><td>EDU</td><td>VET</td><td>DFS</td><td>EDU &rarr; CoNAS &rarr; FOOD &rarr; AGRIC &rarr; VET</td><td class="n">4</td><td class="n">5</td></tr>
+<tr class="pair"><td>5</td><td>SSP</td><td>LAW</td><td>BFS</td><td>SSP &rarr; ECON &rarr; LAW</td><td class="n">2</td><td class="n">8</td></tr>
+<tr><td>5</td><td>SSP</td><td>LAW</td><td>DFS</td><td>SSP &rarr; CTF &rarr; FS &rarr; LAW</td><td class="n">3</td><td class="n">15</td></tr>
+<tr class="pair"><td>6</td><td>CoCIS</td><td>ECON</td><td>BFS</td><td>CoCIS &rarr; SSP &rarr; ECON</td><td class="n">2</td><td class="n">8</td></tr>
+<tr><td>6</td><td>CoCIS</td><td>ECON</td><td>DFS</td><td>CoCIS &rarr; CTF &rarr; FS &rarr; ML &rarr; ECON</td><td class="n">4</td><td class="n">15</td></tr>
+<tr class="pair"><td>7</td><td>LAW</td><td>MT</td><td>BFS</td><td>LAW &rarr; FS &rarr; MB &rarr; LPA &rarr; MT</td><td class="n">4</td><td class="n">13</td></tr>
+<tr><td>7</td><td>LAW</td><td>MT</td><td>DFS</td><td>LAW &rarr; FS &rarr; CTF &rarr; CoCIS &rarr; ENG &rarr; MT</td><td class="n">5</td><td class="n">5</td></tr>
+<tr class="pair"><td>8</td><td>CoCIS</td><td>SBE</td><td>BFS</td><td>CoCIS &rarr; ENG &rarr; SBE</td><td class="n">2</td><td class="n">7</td></tr>
+<tr><td>8</td><td>CoCIS</td><td>SBE</td><td>DFS</td><td>CoCIS &rarr; CTF &rarr; FS &rarr; MB &rarr; LPA &rarr; MT &rarr; SBE</td><td class="n">6</td><td class="n">7</td></tr>
+<tr class="pair"><td>9</td><td>AGRIC</td><td>LPA</td><td>BFS</td><td>AGRIC &rarr; FOOD &rarr; CoNAS &rarr; EDU &rarr; ML &rarr; MB &rarr; LPA</td><td class="n">6</td><td class="n">13</td></tr>
+<tr><td>9</td><td>AGRIC</td><td>LPA</td><td>DFS</td><td>AGRIC &rarr; FOOD &rarr; CoNAS &rarr; EDU &rarr; ML &rarr; FS &rarr; CTF &rarr; CoCIS &rarr; ENG &rarr; MT &rarr; LPA</td><td class="n">10</td><td class="n">10</td></tr>
+<tr class="pair"><td>10</td><td>ENG</td><td>VET</td><td>BFS</td><td>ENG &rarr; CoCIS &rarr; CTF &rarr; FS &rarr; ML &rarr; EDU &rarr; CoNAS &rarr; FOOD &rarr; AGRIC &rarr; VET</td><td class="n">9</td><td class="n">18</td></tr>
+<tr><td>10</td><td>ENG</td><td>VET</td><td>DFS</td><td>ENG &rarr; CoCIS &rarr; CTF &rarr; FS &rarr; MB &rarr; SSS &rarr; EDU &rarr; CoNAS &rarr; FOOD &rarr; AGRIC &rarr; VET</td><td class="n">10</td><td class="n">11</td></tr>
+</table>
+<p class="key">Conditions: BFS and DFS return different routes in pairs 5&ndash;10 (six pairs). Pairs 1 and 2 are directly connected schools. Pairs 9 and 10 are at least six hops apart (6 and 9 hops by BFS).</p>
+
+<h2>4. Analysis</h2>
+<h3>4.1 Why BFS always returns a fewest-hops route</h3>
+<p>In all ten pairs, BFS's cost is less than or equal to DFS's. To check more widely, I compared BFS against true shortest distances (all-pairs Floyd&ndash;Warshall) for all <b>182</b> ordered school pairs, and BFS was optimal in <b>182/182</b>. The reason is that a FIFO queue removes nodes in order of depth: every node at depth <i>d</i> leaves the frontier before any node at depth <i>d</i>+1, so the first goal node removed is the shallowest one. The condition from the lecture is that <b>BFS is cost-optimal when all actions have the same cost</b>, so that path cost is depth (a non-decreasing function of depth). That holds here because every hop costs 1. The <code>reached</code> table does not break this: under FIFO order, the first time a state is generated is already at its minimum depth, so skipping later copies never throws away a shorter path.</p>
+
+<h3>4.2 A pair where DFS returns a longer route: CoCIS &rarr; School of the Built Environment (row 8)</h3>
+<div class="two avoid">
+<figure>
+<svg viewBox="40 105 1210 720" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <g stroke="#a3acb7" stroke-width="3">
+    <line x1="597" y1="163" x2="628" y2="381"/><line x1="597" y1="163" x2="908" y2="334"/>
+    <line x1="597" y1="163" x2="908" y2="148"/><line x1="597" y1="163" x2="302" y2="148"/>
+    <line x1="628" y1="381" x2="908" y2="334"/><line x1="628" y1="381" x2="628" y2="598"/>
+    <line x1="628" y1="381" x2="442" y2="520"/><line x1="908" y1="334" x2="1157" y2="272"/>
+    <line x1="908" y1="334" x2="846" y2="536"/><line x1="442" y1="520" x2="209" y2="629"/>
+    <line x1="442" y1="520" x2="520" y2="753"/><line x1="209" y1="629" x2="520" y2="753"/>
+    <line x1="209" y1="629" x2="147" y2="442"/><line x1="147" y1="442" x2="333" y2="334"/>
+    <line x1="147" y1="442" x2="116" y2="272"/><line x1="333" y1="334" x2="116" y2="272"/>
+    <line x1="116" y1="272" x2="302" y2="148"/><line x1="1157" y1="272" x2="908" y2="148"/>
+    <line x1="1157" y1="272" x2="1173" y2="427"/><line x1="1173" y1="427" x2="1173" y2="582"/>
+    <line x1="1173" y1="582" x2="1173" y2="722"/><line x1="1173" y1="722" x2="939" y2="784"/>
+    <line x1="520" y1="753" x2="846" y2="536"/><line x1="846" y1="536" x2="628" y2="598"/>
+  </g>
+  <g stroke="#1565c0" stroke-width="11" stroke-linecap="round">
+    <line x1="209" y1="629" x2="147" y2="442"/><line x1="147" y1="442" x2="333" y2="334"/>
+  </g>
+  <g stroke="#c62828" stroke-width="9" stroke-dasharray="20 12" stroke-linecap="round" fill="none">
+    <line x1="209" y1="629" x2="442" y2="520"/><line x1="442" y1="520" x2="628" y2="381"/>
+    <line x1="628" y1="381" x2="597" y2="163"/><line x1="597" y1="163" x2="302" y2="148"/>
+    <line x1="302" y1="148" x2="116" y2="272"/><line x1="116" y1="272" x2="333" y2="334"/>
+  </g>
+  <g font-size="25" text-anchor="middle" font-weight="600">
+    <g fill="#f0b032" stroke="#8a5d00" stroke-width="2">
+      <rect x="537" y="138" width="120" height="50" rx="10"/><rect x="568" y="356" width="120" height="50" rx="10"/>
+      <rect x="848" y="309" width="120" height="50" rx="10"/><rect x="382" y="495" width="120" height="50" rx="10"/>
+    </g>
+    <g fill="#111"><text x="597" y="172">MB</text><text x="628" y="390">FS</text><text x="908" y="343">ML</text><text x="442" y="529">CTF</text></g>
+    <g fill="#0f4c5c">
+      <rect x="242" y="123" width="120" height="50" rx="10"/><rect x="848" y="123" width="120" height="50" rx="10"/>
+      <rect x="56" y="247" width="120" height="50" rx="10"/><rect x="273" y="309" width="120" height="50" rx="10"/>
+      <rect x="1097" y="247" width="120" height="50" rx="10"/><rect x="87" y="417" width="120" height="50" rx="10"/>
+      <rect x="1113" y="402" width="120" height="50" rx="10"/><rect x="786" y="511" width="120" height="50" rx="10"/>
+      <rect x="568" y="573" width="120" height="50" rx="10"/><rect x="1113" y="557" width="120" height="50" rx="10"/>
+      <rect x="149" y="604" width="120" height="50" rx="10"/><rect x="1113" y="697" width="120" height="50" rx="10"/>
+      <rect x="460" y="728" width="120" height="50" rx="10"/><rect x="879" y="759" width="120" height="50" rx="10"/>
+    </g>
+    <g fill="#fff">
+      <text x="302" y="157">LPA</text><text x="908" y="157">SSS</text><text x="116" y="281">MT</text>
+      <text x="333" y="343">SBE</text><text x="1157" y="281">EDU</text><text x="147" y="451">ENG</text>
+      <text x="1173" y="436">CoNAS</text><text x="846" y="545">ECON</text><text x="628" y="607">LAW</text>
+      <text x="1173" y="591">FOOD</text><text x="209" y="638">CoCIS</text><text x="1173" y="731">AGRIC</text>
+      <text x="520" y="762">SSP</text><text x="939" y="793">VET</text>
+    </g>
+  </g>
+</svg>
+<figcaption><span class="tag-b">Solid blue</span>: BFS route, 2 hops. <span class="tag-d">Dashed red</span>: DFS route, 6 hops. Amber boxes are landmarks.</figcaption>
+</figure>
+<div>
+<p><b>BFS</b> expands CoCIS, CTF, ENG, SSP, CoCIS, FS, MT and then removes SBE (depth 2): <b>2 hops</b>.</p>
+<p><b>DFS</b> expands CoCIS, CTF, CoCIS, FS, MB, LPA, MT and then removes SBE: <b>6 hops</b>.</p>
+<p><b>Why DFS stopped at the longer route.</b> CoCIS's children are [CTF, ENG, SSP] in alphabetical order, so CTF is on top of the stack. DFS always continues from the most recently generated node and follows the first unreached neighbour each time: CTF &rarr; FS &rarr; MB &rarr; LPA &rarr; MT. ENG, which is one step from the goal, was generated at the first step and stored in <code>reached</code>, but it sits at the bottom of the stack and is never expanded, so SBE is never generated from ENG. When MT is expanded, SBE is not in <code>reached</code> yet, so it is pushed, removed and passes the goal test. DFS returns the <i>first</i> goal node it removes. It has no notion of depth or cost, so it does not check whether a shorter path exists.</p>
+</div>
+</div>
+
+<h3>4.3 Nodes expanded: is DFS always cheaper?</h3>
+<p><b>No.</b> DFS wins when the alphabetically first branch leads to the goal: Law &rarr; MT (5 vs. 13) and Education &rarr; Vet (5 vs. 14). It loses badly on <b>Economics &rarr; Law (17 vs. 2)</b>, although the two schools are directly connected. Economics' neighbours are [Main Library, Law, Statistics and Planning], so Main Library is popped first and DFS sinks into the rest of the campus. Law is already in <code>reached</code>, so it is never regenerated nearer the top of the stack. Because the goal test happens on removal, the Law node waits at the bottom while DFS works through nearly the whole campus (17 expansions). CoCIS &rarr; Engineering (17 vs. 2) and CoCIS &rarr; Economics (15 vs. 8) behave the same way, and pairs 3 and 8 are ties. Over all 182 ordered pairs, DFS expanded fewer nodes in 110, the same number in 19, and <b>more in 53</b>. DFS saves work only when its arbitrary (here alphabetical) choice happens to point towards the goal.</p>
+
+<h3>4.4 The memory trade-off</h3>
+<p>BFS must store the whole current layer of the tree, so its frontier grows as O(<i>b</i><sup><i>d</i></sup>). DFS stores only the current path plus the unexplored siblings along it, O(<i>bm</i>). In this graph, BFS's frontier grows at the <b>hubs</b>: the landmarks Main Building, Freedom Square and Main Library each have degree 4. It also grows at the <b>cycles</b> (the MB&ndash;FS&ndash;ML triangle, the CTF&ndash;CoCIS&ndash;SSP and ENG&ndash;SBE&ndash;MT triangles and the long outer loops), which create many paths of equal length to the same place. With <code>reached</code>, the graph is so small that BFS's frontier never exceeded 8 nodes in any of the 182 runs. Without <code>reached</code>, every cycle multiplies the number of paths: tree-like BFS from Engineering to Veterinary Medicine (9 hops) expanded 9,043 nodes and held <b>18,435 nodes in the frontier at once</b>. Time and memory both grow as <i>b</i><sup><i>d</i></sup>, but time only accumulates, whereas every frontier node has to be held in memory at the same moment. A machine can be left running for hours but cannot hold terabytes of nodes. In Russell &amp; Norvig's example (<i>b</i> = 10, depth 10), BFS needs about 3 hours but about 10 terabytes of memory. That is why the lecture says memory, not time, limits BFS in practice.</p>
+
+<h3>4.5 A limitation of the equal-cost assumption</h3>
+<p>Counting hops treats a short step such as Main Building &rarr; Freedom Square the same as a long walk such as Agricultural Sciences &rarr; Veterinary Medicine. BFS therefore minimises the <i>number of segments</i>, not the distance or walking time. For example, in row 7 the 5-hop DFS route through CTF, CoCIS and Engineering could easily be shorter on the ground than BFS's 4-hop route over the hill through Main Building. If edges carried real walking distances, BFS would no longer be optimal. I would use <b>uniform-cost search</b>, the best-first search with <i>f</i>(<i>n</i>) = <i>g</i>(<i>n</i>), which uses a priority queue ordered by path cost and applies the goal test on removal (as this design already does). It is optimal for any positive step costs. With map coordinates, A* with a straight-line-distance heuristic would find the same optimal route while expanding fewer nodes.</p>
+
+<h2>5. Reflection</h2>
+<p>I would replace the unit cost on every edge with the <b>measured walking time</b> of each connection, including slope, so that the two directions of a hill path cost different amounts (walking up to Main Building is slower than walking down). This one change makes "optimal" mean what a visitor actually cares about, which is arriving soonest. It also turns the problem into a real test of uniform-cost search rather than BFS.</p>
+
+</body>
+</html>
